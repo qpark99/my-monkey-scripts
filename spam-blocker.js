@@ -1,3 +1,13 @@
+// ==UserScript==
+// @name        spam blocker
+// @namespace   Violentmonkey Scripts
+// @match       *://www.dogdrip.net/*
+// @grant       none
+// @version     1.0
+// @author      jsq
+// @description 2025. 5. 13. 오후 9:03:05
+// ==/UserScript==
+
 (function() {
     'use strict';
 
