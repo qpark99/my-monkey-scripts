@@ -13,7 +13,7 @@
     'use strict';
 
     // 필터링할 키워드 목록
-    const keywords = ['백종원', '주호민']; // 원하는 키워드로 수정
+    const keywords = ['백종원', '주호민', '가세연', '창원', '동덕', 'skt', '태움']; // 원하는 키워드로 수정
 
     // span 요소를 필터링하는 함수
     function filterSpans() {
