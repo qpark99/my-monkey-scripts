@@ -4,7 +4,7 @@
 // @match       *://www.dogdrip.net/*
 // @match       *://*.ruliweb.com/*
 // @grant       none
-// @version     1.2
+// @version     1.3
 // @author      jsq
 // @description 2025. 5. 13. 오후 9:03:05
 // ==/UserScript==
@@ -13,7 +13,7 @@
     'use strict';
 
     // 필터링할 키워드 목록
-    const keywords = ['백종원', '주호민', '가세연', '창원', '동덕', 'sk', '태움']; // 원하는 키워드로 수정
+    const keywords = ['백종원', '주호민', '가세연', '창원', '동덕', 'sk', '태움', '트럼프']; // 원하는 키워드로 수정
 
     // span 요소를 필터링하는 함수
     function filterSpans() {
