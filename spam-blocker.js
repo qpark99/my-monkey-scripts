@@ -4,7 +4,7 @@
 // @match       *://www.dogdrip.net/*
 // @match       *://*.ruliweb.com/*
 // @grant       none
-// @version     1.4
+// @version     1.5
 // @author      jsq
 // @description 2025. 5. 13. 오후 9:03:05
 // ==/UserScript==
@@ -29,7 +29,7 @@
     }
 
     // replaceKeywords용 키워드 목록
-    const replaceKeywordsList = ['ㅇㅎ)', 'ㅎㅂ)', 'ㅇㅎ']; // 예: ['키워드3', '키워드4']
+    const replaceKeywordsList = ['ㅇㅎ\\)', 'ㅎㅂ\\)', 'ㅇㅎ']; // 예: ['키워드3', '키워드4']
     
     // 키워드를 제거하거나 대체하는 함수 (신규)
     function replaceKeywords() {
