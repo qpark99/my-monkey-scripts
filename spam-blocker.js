@@ -4,7 +4,7 @@
 // @match       *://www.dogdrip.net/*
 // @match       *://*.ruliweb.com/*
 // @grant       none
-// @version     1.6
+// @version     1.7
 // @author      jsq
 // @description 2025. 5. 13. 오후 9:03:05
 // ==/UserScript==
@@ -13,7 +13,11 @@
     'use strict';
 
     // 필터링할 키워드 목록
-    const keywords = ['백종원', '주호민', '가세연', '창원', '동덕', 'sk', '태움', '트럼프', '더본']; // 원하는 키워드로 수정
+    const keywords = [
+        '백종원', '주호민', '가세연', '트럼프', '트황상', '더본', '한문철', '이세돌',
+        '창원', '동덕', 'sk', '태움',
+        '부자', '연봉', '자산', '부동산', '강남'
+        ]; // 원하는 키워드로 수정
 
     // span 요소를 필터링하는 함수
     function filterSpans() {
@@ -29,7 +33,7 @@
     }
 
     // replaceKeywords용 키워드 목록
-    const replaceKeywordsList = ['ㅇㅎ\\)', 'ㅎㅂ\\)', 'ㅇㅎ']; // 예: ['키워드3', '키워드4']
+    const replaceKeywordsList = ['ㅇㅎ\\)', 'ㅎㅂ\\)', 'ㅇㅎ', '약후']; // 예: ['키워드3', '키워드4']
     
     // 키워드를 제거하거나 대체하는 함수 (신규)
     function replaceKeywords() {
