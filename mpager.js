@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         스크롤 확장 (Scroll Enhancer)
 // @namespace    http://tampermonkey.net/
-// @version      1.6 // 버전 업데이트
+// @version      1.9 // 버전 업데이트
 // @description  아이패드/PC 환경에서 페이지 단위로 부드럽게 스크롤하는 버튼과 설정 기능을 제공합니다. (주요 스크롤 요소 또는 메인 윈도우 스크롤)
 // @author       Gemini
 // @match        *://*/*
@@ -10,6 +10,30 @@
 
 (function() {
     'use strict';
+
+    // UI 색상 및 투명도 설정 상수
+    const UI_COLORS = {
+        // 메인 스크롤 버튼 (위/아래)
+        primaryButtonBg: '173, 216, 230', // 연한 하늘색 (RGB)
+        primaryButtonOpacity: 0.3,       // 기본 투명도 (30%)
+        primaryButtonHoverOpacity: 0.5,  // 호버 시 투명도 (50%)
+
+        // 설정 버튼 (톱니바퀴)
+        settingsButtonBg: '169, 169, 169', // 중간 회색 (RGB)
+        settingsButtonOpacity: 0.8,      // 기본 투명도 (30%)
+        settingsButtonHoverOpacity: 0.8, // 호버 시 투명도 (50%)
+
+        // 설정 메뉴 배경
+        settingsMenuBg: '255, 255, 255', // 흰색 (RGB)
+        settingsMenuOpacity: 1.0,       // 메뉴 배경 투명도 (60%)
+
+        // 설정 메뉴 옵션 호버/선택 배경
+        optionHoverBg: '240, 240, 240', // 연한 회색 (RGB)
+        optionHoverOpacity: 0.7,       // 호버 시 투명도 (70%)
+
+        optionSelectedBg: '224, 224, 224', // 약간 더 진한 연한 회색 (RGB)
+        optionSelectedOpacity: 1.0,      // 선택 시 투명도 (70%)
+    };
 
     // 스크롤 양 설정 옵션 정의
     const SCROLL_OPTIONS = [
@@ -121,8 +145,8 @@
 
             /* 공통 버튼 스타일 */
             .scroll-enhancer-button {
-                background-color: #4A90E2; /* 파란색 */
-                color: white;
+                background-color: rgba(${UI_COLORS.primaryButtonBg}, ${UI_COLORS.primaryButtonOpacity});
+                color: rgba(255, 255, 255, ${UI_COLORS.primaryButtonOpacity}); /* 텍스트 색상도 투명도 적용 */
                 border: none;
                 border-radius: 8px; /* 둥근 모서리 */
                 width: 48px;
@@ -139,7 +163,8 @@
             }
 
             .scroll-enhancer-button:hover {
-                background-color: #357ABD; /* 호버 시 더 진한 파란색 */
+                background-color: rgba(${UI_COLORS.primaryButtonBg}, ${UI_COLORS.primaryButtonHoverOpacity});
+                color: rgba(255, 255, 255, ${UI_COLORS.primaryButtonHoverOpacity}); /* 호버 시 텍스트 색상 투명도 적용 */
                 transform: translateY(-2px); /* 살짝 위로 */
             }
 
@@ -150,16 +175,16 @@
 
             /* 설정 버튼 */
             #settingsButton {
-                background-color: #6C757D; /* 회색 */
+                background-color: rgba(${UI_COLORS.settingsButtonBg}, ${UI_COLORS.settingsButtonOpacity});
             }
 
             #settingsButton:hover {
-                background-color: #5A6268;
+                background-color: rgba(${UI_COLORS.settingsButtonBg}, ${UI_COLORS.settingsButtonHoverOpacity});
             }
 
             /* 설정 메뉴 */
             #settingsMenu {
-                background-color: white;
+                background-color: rgba(${UI_COLORS.settingsMenuBg}, ${UI_COLORS.settingsMenuOpacity});
                 border-radius: 8px;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
                 padding: 10px;
@@ -196,17 +221,17 @@
                 border-radius: 6px;
                 width: 100%;
                 text-align: left;
-                color: #333;
+                color: #333; /* 텍스트 색상은 투명도와 별개로 유지 */
                 font-size: 16px;
                 transition: background-color 0.2s ease;
             }
 
             .setting-option:hover {
-                background-color: #F0F0F0;
+                background-color: rgba(${UI_COLORS.optionHoverBg}, ${UI_COLORS.optionHoverOpacity});
             }
 
             .setting-option.selected {
-                background-color: #E0E0E0;
+                background-color: rgba(${UI_COLORS.optionSelectedBg}, ${UI_COLORS.optionSelectedOpacity});
                 font-weight: bold;
             }
         `;
