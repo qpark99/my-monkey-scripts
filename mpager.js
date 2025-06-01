@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         스크롤 확장 (Scroll Enhancer)
 // @namespace    http://tampermonkey.net/
-// @version      1.5 // 버전 업데이트
+// @version      1.6 // 버전 업데이트
 // @description  아이패드/PC 환경에서 페이지 단위로 부드럽게 스크롤하는 버튼과 설정 기능을 제공합니다. (주요 스크롤 요소 또는 메인 윈도우 스크롤)
 // @author       Gemini
 // @match        *://*/*
@@ -19,13 +19,28 @@
         { text: '60% 화면', percentage: 0.6 }
     ];
 
-    // 현재 스크롤 양 설정 (기본값 또는 저장된 값 로드)
-    const localStorageKey = `scroll_enhancer_percentage_${window.location.hostname}`;
-    let currentScrollPercentage = parseFloat(localStorage.getItem(localStorageKey));
+    // 글자 크기 설정 옵션 정의
+    const FONT_SIZE_OPTIONS = [
+        { text: '기본 크기 (100%)', size: '100%' },
+        { text: '크게 (110%)', size: '110%' },
+        { text: '더 크게 (120%)', size: '120%' },
+        { text: '아주 크게 (130%)', size: '130%' }
+    ];
 
-    // 저장된 값이 없거나 유효하지 않으면 기본값 (90%) 사용
+    // 로컬 스토리지 키 정의 (도메인별로 저장)
+    const scrollPercentageKey = `scroll_enhancer_percentage_${window.location.hostname}`;
+    const fontSizeKey = `font_enhancer_size_${window.location.hostname}`;
+
+    // 현재 스크롤 양 설정 (기본값 또는 저장된 값 로드)
+    let currentScrollPercentage = parseFloat(localStorage.getItem(scrollPercentageKey));
     if (isNaN(currentScrollPercentage) || !SCROLL_OPTIONS.some(opt => opt.percentage === currentScrollPercentage)) {
         currentScrollPercentage = SCROLL_OPTIONS[0].percentage; // 첫 번째 옵션 (90%)을 기본값으로
+    }
+
+    // 현재 글자 크기 설정 (기본값 또는 저장된 값 로드)
+    let currentFontSize = localStorage.getItem(fontSizeKey);
+    if (!currentFontSize || !FONT_SIZE_OPTIONS.some(opt => opt.size === currentFontSize)) {
+        currentFontSize = FONT_SIZE_OPTIONS[0].size; // 첫 번째 옵션 (100%)을 기본값으로
     }
 
     // 스크롤 대상 요소 (초기값은 문서의 루트 요소)
@@ -37,7 +52,7 @@
      * @param {number} maxDepth - DOM 탐색의 최대 깊이 제한. (기본값 10으로 조정)
      * @returns {HTMLElement} 찾은 스크롤 가능한 요소 또는 document.documentElement (메인 윈도우).
      */
-    function findPrimaryScrollableElement(maxDepth = 10) { // maxDepth를 10으로 조정
+    function findPrimaryScrollableElement(maxDepth = 10) {
         let bestCandidate = null;
         let maxScrollableHeight = 0; // 가장 큰 스크롤 가능한 높이를 가진 요소를 찾기 위함
 
@@ -155,12 +170,24 @@
                 opacity: 0;
                 transform: translateY(10px);
                 transition: opacity 0.3s ease, transform 0.3s ease;
+                min-width: 150px; /* 메뉴 최소 너비 */
             }
 
             #settingsMenu.show {
                 display: flex;
                 opacity: 1;
                 transform: translateY(0);
+            }
+
+            .setting-section-title {
+                font-weight: bold;
+                margin-top: 5px;
+                margin-bottom: 5px;
+                color: #555;
+                font-size: 14px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                padding-left: 5px;
             }
 
             .setting-option {
@@ -195,13 +222,34 @@
         settingsMenu.id = 'settingsMenu';
         container.appendChild(settingsMenu);
 
+        // 스크롤 단위 섹션
+        const scrollSectionTitle = document.createElement('div');
+        scrollSectionTitle.className = 'setting-section-title';
+        scrollSectionTitle.textContent = '스크롤 단위';
+        settingsMenu.appendChild(scrollSectionTitle);
+
         SCROLL_OPTIONS.forEach(optionData => {
             const optionDiv = document.createElement('div');
-            optionDiv.className = 'setting-option';
+            optionDiv.className = 'setting-option scroll-option'; // 클래스 추가
             optionDiv.textContent = optionData.text;
             optionDiv.dataset.percentage = optionData.percentage.toString();
             settingsMenu.appendChild(optionDiv);
             optionDiv.addEventListener('click', selectScrollPercentage);
+        });
+
+        // 글자 크기 섹션
+        const fontSizeSectionTitle = document.createElement('div');
+        fontSizeSectionTitle.className = 'setting-section-title';
+        fontSizeSectionTitle.textContent = '글자 크기';
+        settingsMenu.appendChild(fontSizeSectionTitle);
+
+        FONT_SIZE_OPTIONS.forEach(optionData => {
+            const optionDiv = document.createElement('div');
+            optionDiv.className = 'setting-option font-size-option'; // 클래스 추가
+            optionDiv.textContent = optionData.text;
+            optionDiv.dataset.size = optionData.size;
+            settingsMenu.appendChild(optionDiv);
+            optionDiv.addEventListener('click', selectFontSize);
         });
 
         // 초기 선택 상태 설정
@@ -214,14 +262,14 @@
         settingsButton.innerHTML = '&#9881;'; // ⚙️ 톱니바퀴 아이콘
         container.appendChild(settingsButton);
 
-        // 위로 스크롤 버튼 (순서 변경)
+        // 위로 스크롤 버튼
         const scrollUpButton = document.createElement('button');
         scrollUpButton.id = 'scrollUpButton';
         scrollUpButton.className = 'scroll-enhancer-button';
         scrollUpButton.innerHTML = '&#9650;'; // ▲ 위 화살표
         container.appendChild(scrollUpButton);
 
-        // 아래로 스크롤 버튼 (순서 변경)
+        // 아래로 스크롤 버튼
         const scrollDownButton = document.createElement('button');
         scrollDownButton.id = 'scrollDownButton';
         scrollDownButton.className = 'scroll-enhancer-button';
@@ -248,6 +296,9 @@
         const scrollElement = targetScrollElement === document.documentElement ? window : targetScrollElement;
         scrollElement.addEventListener('scroll', handleSettingsButtonVisibility);
         handleSettingsButtonVisibility(); // 초기 로드 시 가시성 설정
+
+        // 페이지 로드 시 저장된 글자 크기 적용
+        applyFontSize(currentFontSize);
     }
 
     // 스크롤 양 설정 메뉴 토글
@@ -259,21 +310,46 @@
     // 스크롤 양 선택
     function selectScrollPercentage(event) {
         currentScrollPercentage = parseFloat(event.target.dataset.percentage);
-        localStorage.setItem(localStorageKey, currentScrollPercentage.toString()); // localStorage에 저장
+        localStorage.setItem(scrollPercentageKey, currentScrollPercentage.toString()); // localStorage에 저장
         updateSelectedOption();
         toggleSettingsMenu(); // 선택 후 메뉴 닫기
     }
 
-    // 선택된 스크롤 양 옵션 UI 업데이트
+    // 글자 크기 선택 및 적용
+    function selectFontSize(event) {
+        currentFontSize = event.target.dataset.size;
+        localStorage.setItem(fontSizeKey, currentFontSize); // localStorage에 저장
+        applyFontSize(currentFontSize);
+        updateSelectedOption();
+        toggleSettingsMenu(); // 선택 후 메뉴 닫기
+    }
+
+    // 선택된 스크롤 양 및 글자 크기 옵션 UI 업데이트
     function updateSelectedOption() {
-        const options = document.querySelectorAll('#settingsMenu .setting-option');
-        options.forEach(option => {
+        // 스크롤 옵션 업데이트
+        const scrollOptions = document.querySelectorAll('#settingsMenu .scroll-option');
+        scrollOptions.forEach(option => {
             if (parseFloat(option.dataset.percentage) === currentScrollPercentage) {
                 option.classList.add('selected');
             } else {
                 option.classList.remove('selected');
             }
         });
+
+        // 글자 크기 옵션 업데이트
+        const fontSizeOptions = document.querySelectorAll('#settingsMenu .font-size-option');
+        fontSizeOptions.forEach(option => {
+            if (option.dataset.size === currentFontSize) {
+                option.classList.add('selected');
+            } else {
+                option.classList.remove('selected');
+            }
+        });
+    }
+
+    // 글자 크기 적용 함수
+    function applyFontSize(size) {
+        document.documentElement.style.fontSize = size;
     }
 
     // 설정 버튼 가시성 제어
