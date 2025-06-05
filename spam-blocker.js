@@ -4,7 +4,7 @@
 // @match       *://www.dogdrip.net/*
 // @match       *://*.ruliweb.com/*
 // @grant       none
-// @version     1.14
+// @version     1.15
 // @author      jsq
 // @description 2025. 5. 13. 오후 9:03:05
 // ==/UserScript==
