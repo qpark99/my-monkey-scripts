@@ -4,7 +4,7 @@
 // @match       *://www.dogdrip.net/*
 // @match       *://*.ruliweb.com/*
 // @grant       none
-// @version     1.43
+// @version     1.44
 // @author      jsq
 // @description 2025. 5. 13. 오후 9:03:05
 // ==/UserScript==
@@ -22,7 +22,15 @@
         '페미', '왁타', '🦪', '차은우', '탈세', '협회', '담합', '연봉', '실수령', '퐁퐁',
         '월급', '전쟁', '이스라엘', 'ㅇㅎ', 'ㅎㅂ', '선관위', '부정선거', '투표용지', '개표', '투표소',
         '전한길', '모스탄', '윤어게인', '선거무효', '검열', '허위조작정보', '탱크데이', '멸공', '환율', '코스피',
+        '선거', '준동', '안협소',
         ]; // 원하는 키워드로 수정
+
+    // 복합 규칙: 한 제목에 배열의 단어가 "모두" 들어있을 때만 차단 (의미형 차단, 단일어 오차단 방지)
+    const rules = [
+        ['시위', '국적'],
+        ['MBC', '왜곡'],
+        ['20대', '투표율'],
+        ]; // 예: ['시위','국적'] → 둘 다 포함시 차단
 
     // span 요소를 필터링하는 함수
     function filterSpans() {
@@ -30,8 +38,9 @@
         const spans = document.querySelectorAll('span, a');
         spans.forEach(span => {
             let text = span.textContent.toLowerCase();
-            // 키워드가 포함되어 있는지 확인
-            if (keywords.some(keyword => text.includes(keyword.toLowerCase()))) {
+            // 단일 키워드 포함 OR 복합 규칙(단어 전부 포함) 확인
+            if (keywords.some(keyword => text.includes(keyword.toLowerCase())) ||
+                rules.some(rule => rule.every(word => text.includes(word.toLowerCase())))) {
                 span.textContent = '.....'; // 텍스트를 .....로 치환
             }
         });
