@@ -1,81 +1,79 @@
 // ==UserScript==
 // @name         ChatGPT Keyboard Scroll Fix
 // @namespace    js-chatgpt-keyboard-scroll-fix
-// @version      2.0
+// @version      3.0
 // @description  Restore native keyboard scrolling in ChatGPT
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @grant        none
-// @run-at       document-idle
+// @run-at       document-start
 // ==/UserScript==
 
 (function () {
     'use strict';
 
+    let currentScroller = null;
+
     function getScroller() {
         return document.querySelector('.thread-scroll-container');
     }
 
-    function restoreScrollFocus() {
+    function setupScroller() {
         const scroller = getScroller();
-        if (!scroller) return false;
 
-        // 키보드 포커스를 받을 수 있게 함
-        if (!scroller.hasAttribute('tabindex')) {
-            scroller.setAttribute('tabindex', '-1');
-        }
+        if (!scroller) return;
 
-        // 기본 outline 제거
+        // 이미 현재 컨테이너를 초기화했다면 아무것도 안 함
+        if (scroller === currentScroller) return;
+
+        currentScroller = scroller;
+
+        scroller.setAttribute('tabindex', '-1');
         scroller.style.outline = 'none';
-
-        // 브라우저 기본 스크롤을 약간 부드럽게
         scroller.style.scrollBehavior = 'smooth';
+
+        console.log('ChatGPT scroll container initialized');
+    }
+
+    function restoreScrollFocus() {
+        setupScroller();
+
+        const scroller = getScroller();
+        if (!scroller) return;
 
         scroller.focus({
             preventScroll: true
         });
-
-        return true;
     }
 
     function isInputElement(element) {
+        if (!(element instanceof Element)) return false;
+
         return !!element.closest(
             'textarea, input, select, [contenteditable="true"], [role="textbox"]'
         );
     }
 
     function isInteractiveElement(element) {
+        if (!(element instanceof Element)) return false;
+
         return !!element.closest(
             'button, a, [role="button"], [role="menuitem"], [role="option"]'
         );
     }
 
-    /*
-     * 핵심:
-     * ChatGPT 메시지 영역을 클릭하면 현재 버그 때문에
-     * "Messages page" 같은 잘못된 컨테이너에 포커스가 감.
-     *
-     * 클릭 처리가 끝난 다음 실제 scroll container로
-     * 포커스를 다시 옮긴다.
-     */
-    document.addEventListener('click', function (event) {
+    // 대화 본문 클릭 시 스크롤 컨테이너에 포커스 복원
+    document.addEventListener('click', event => {
         const target = event.target;
 
         if (!(target instanceof Element)) return;
-
-        // 입력창을 클릭했으면 절대 포커스를 뺏지 않음
         if (isInputElement(target)) return;
-
-        // 버튼, 링크 등을 클릭했을 때도 건드리지 않음
         if (isInteractiveElement(target)) return;
 
         const scroller = getScroller();
         if (!scroller) return;
-
-        // 실제 대화 영역을 클릭했을 때만
         if (!scroller.contains(target)) return;
 
-        // ChatGPT 자체 click/focus 처리가 끝난 뒤 실행
         setTimeout(() => {
             restoreScrollFocus();
         }, 0);
@@ -83,11 +81,8 @@
     }, true);
 
 
-    /*
-     * 혹시 ChatGPT가 키 입력 직전에 이상한
-     * Messages page에 포커스를 잡아놓은 경우를 위한 보정.
-     */
-    window.addEventListener('keydown', function (event) {
+    // 키보드 스크롤
+    window.addEventListener('keydown', event => {
 
         const keys = [
             'ArrowUp',
@@ -103,57 +98,53 @@
 
         const active = document.activeElement;
 
-        // 실제로 글을 입력하고 있다면 건드리지 않는다.
-        if (
-            active &&
-            active instanceof Element &&
-            isInputElement(active)
-        ) {
+        // 입력 중이면 기본 키 동작 유지
+        if (active && isInputElement(active)) {
             return;
         }
 
-        const scroller = getScroller();
+        setupScroller();
 
-        if (
-            scroller &&
-            document.activeElement !== scroller
-        ) {
-            restoreScrollFocus();
+        const scroller = getScroller();
+        if (!scroller) return;
+
+        if (document.activeElement !== scroller) {
+            scroller.focus({
+                preventScroll: true
+            });
         }
 
-        /*
-         * preventDefault() 하지 않는다.
-         *
-         * 브라우저가 원래 가지고 있는
-         * ↑↓ / PgUp / PgDn / Space / Home / End
-         * 동작을 그대로 사용하게 한다.
-         */
-
+        // preventDefault 하지 않음
+        // 브라우저 기본 키보드 스크롤을 그대로 사용
     }, true);
 
 
     /*
-     * SPA라서 페이지 이동 후 DOM이 바뀔 수 있으므로
-     * 최초 로딩 때 한번 준비.
+     * 핵심 부분.
+     *
+     * ChatGPT는 SPA라 대화 이동 시 DOM을 통째로 교체함.
+     * 새 scroll container가 생기면 자동으로 다시 setup.
      */
-    function init() {
-        const scroller = getScroller();
+    const observer = new MutationObserver(() => {
+        setupScroller();
+    });
 
-        if (!scroller) {
-            setTimeout(init, 500);
+    function startObserver() {
+        if (!document.body) {
+            requestAnimationFrame(startObserver);
             return;
         }
 
-        scroller.setAttribute('tabindex', '-1');
-        scroller.style.outline = 'none';
-        scroller.style.scrollBehavior = 'smooth';
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
 
-        console.log(
-            '%cChatGPT Keyboard Scroll Fix active',
-            'color:#10a37f;font-weight:bold'
-        );
+        setupScroller();
+
+        console.log('ChatGPT Keyboard Scroll Fix active');
     }
 
-    init();
+    startObserver();
 
 })();
