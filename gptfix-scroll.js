@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         ChatGPT Keyboard Scroll Fix DEBUG
+// @name         ChatGPT Keyboard Scroll Fix
 // @namespace    js-chatgpt-keyboard-scroll-fix
-// @version      5.0
-// @description  Restore native keyboard scrolling in ChatGPT + detailed debugging
+// @version      6.0
+// @description  Restore native keyboard scrolling in ChatGPT
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @grant        none
@@ -12,52 +12,33 @@
 (function () {
     'use strict';
 
-    const PREFIX = '[GPT-SCROLL]';
+    const SCROLL_KEYS = new Set([
+        'ArrowUp',
+        'ArrowDown',
+        'PageUp',
+        'PageDown',
+        'Home',
+        'End',
+        ' '
+    ]);
 
+    let repairTimers = [];
     let lastHref = location.href;
-    let repairSequence = 0;
 
-    function log(...args) {
-        console.log(
-            '%c' + PREFIX,
-            'color:#10a37f;font-weight:bold',
-            ...args
-        );
-    }
 
-    function describeElement(el) {
-        if (!el) return 'null';
-
-        if (!(el instanceof Element)) {
-            return String(el);
-        }
-
-        let result = el.tagName.toLowerCase();
-
-        if (el.id) {
-            result += '#' + el.id;
-        }
-
-        if (el.classList?.length) {
-            result += '.' + [...el.classList]
-                .slice(0, 4)
-                .join('.');
-        }
-
-        const role = el.getAttribute('role');
-
-        if (role) {
-            result += `[role="${role}"]`;
-        }
-
-        return result;
-    }
+    // --------------------------------------------------
+    // Element helpers
+    // --------------------------------------------------
 
     function isInputElement(element) {
         if (!(element instanceof Element)) return false;
 
         return !!element.closest(
-            'textarea, input, select, [contenteditable="true"], [role="textbox"]'
+            'textarea,' +
+            'input,' +
+            'select,' +
+            '[contenteditable="true"],' +
+            '[role="textbox"]'
         );
     }
 
@@ -65,651 +46,415 @@
         if (!(element instanceof Element)) return false;
 
         return !!element.closest(
-            'button, a, select, [role="button"], [role="menuitem"], [role="option"]'
+            'button,' +
+            'a,' +
+            '[role="button"],' +
+            '[role="menuitem"],' +
+            '[role="option"]'
         );
     }
 
-    /*
-     * querySelector 하나만 믿지 않는다.
-     *
-     * 채팅 전환 도중 old/new scroll container가
-     * 동시에 존재할 가능성이 있으므로 전부 검사한다.
-     */
-    function getScrollerCandidates() {
-        return [
+
+    // --------------------------------------------------
+    // Find actual visible ChatGPT scroll container
+    // --------------------------------------------------
+
+    function getCurrentScroller() {
+        const candidates = [
             ...document.querySelectorAll('.thread-scroll-container')
         ];
-    }
 
-    function getVisibilityInfo(el) {
-        const rect = el.getBoundingClientRect();
-        const style = getComputedStyle(el);
-
-        const visible =
-            style.display !== 'none' &&
-            style.visibility !== 'hidden' &&
-            parseFloat(style.opacity || '1') > 0 &&
-            rect.width > 10 &&
-            rect.height > 10 &&
-            rect.bottom > 0 &&
-            rect.right > 0 &&
-            rect.top < window.innerHeight &&
-            rect.left < window.innerWidth;
-
-        return {
-            visible,
-            rect,
-            style
-        };
-    }
-
-    /*
-     * 현재 화면에서 실제 사용 중인 scroller 선정.
-     *
-     * 보이는 것 + 화면 면적 + scroll 가능 여부에 점수를 준다.
-     */
-    function getCurrentScroller(reason = '') {
-        const candidates = getScrollerCandidates();
-
-        if (!candidates.length) {
-            log(
-                'SCROLLER NOT FOUND',
-                'reason=', reason,
-                'url=', location.pathname
-            );
-
+        if (candidates.length === 0) {
             return null;
         }
 
-        const scored = candidates.map((el, index) => {
-            const info = getVisibilityInfo(el);
+        if (candidates.length === 1) {
+            return candidates[0];
+        }
 
-            let score = 0;
+        let best = null;
+        let bestScore = -Infinity;
 
-            if (info.visible) {
-                score += 1000000;
+        for (const el of candidates) {
+            const rect = el.getBoundingClientRect();
+
+            if (
+                rect.width <= 10 ||
+                rect.height <= 10
+            ) {
+                continue;
             }
 
-            score += info.rect.width * info.rect.height;
+            const style = getComputedStyle(el);
 
-            if (el.scrollHeight > el.clientHeight) {
-                score += 500000;
+            if (
+                style.display === 'none' ||
+                style.visibility === 'hidden'
+            ) {
+                continue;
+            }
+
+            let score =
+                rect.width * rect.height;
+
+            if (
+                rect.bottom > 0 &&
+                rect.top < window.innerHeight
+            ) {
+                score += 1_000_000;
+            }
+
+            if (
+                el.scrollHeight >
+                el.clientHeight
+            ) {
+                score += 500_000;
             }
 
             if (el.closest('main')) {
-                score += 250000;
+                score += 250_000;
             }
 
-            return {
-                el,
-                index,
-                score,
-                visible: info.visible,
-                rect: info.rect,
-                scrollHeight: el.scrollHeight,
-                clientHeight: el.clientHeight
-            };
-        });
-
-        scored.sort((a, b) => b.score - a.score);
-
-        const selected = scored[0];
-
-        log(
-            `getCurrentScroller("${reason}")`,
-            'count=', candidates.length,
-            'selected=', selected.index,
-            'visible=', selected.visible,
-            'size=',
-            Math.round(selected.rect.width) + 'x' +
-            Math.round(selected.rect.height),
-            'scroll=',
-            selected.scrollHeight + '/' +
-            selected.clientHeight
-        );
-
-        /*
-         * 후보가 둘 이상이면 상세 로그.
-         * 이게 이번 문제를 찾는 데 중요함.
-         */
-        if (candidates.length > 1) {
-            console.table(
-                scored.map(item => ({
-                    index: item.index,
-                    selected: item === selected,
-                    visible: item.visible,
-                    width: Math.round(item.rect.width),
-                    height: Math.round(item.rect.height),
-                    scrollHeight: item.scrollHeight,
-                    clientHeight: item.clientHeight,
-                    score: Math.round(item.score)
-                }))
-            );
+            if (score > bestScore) {
+                bestScore = score;
+                best = el;
+            }
         }
 
-        return selected.el;
+        return best || candidates[0];
     }
 
-    /*
-     * 2.0에서 정상 동작했던 설정을 그대로 적용.
-     */
-    function prepareScroller(reason = '') {
-        const scroller = getCurrentScroller(reason);
+
+    // --------------------------------------------------
+    // Apply original 2.0 behaviour
+    // --------------------------------------------------
+
+    function prepareScroller() {
+        const scroller =
+            getCurrentScroller();
 
         if (!scroller) {
             return null;
         }
 
-        const before = {
-            tabindex: scroller.getAttribute('tabindex'),
-            outline: scroller.style.outline,
-            scrollBehavior: scroller.style.scrollBehavior
-        };
-
-        let changed = false;
-
-        if (scroller.getAttribute('tabindex') !== '-1') {
-            scroller.setAttribute('tabindex', '-1');
-            changed = true;
+        if (
+            scroller.getAttribute('tabindex')
+            !== '-1'
+        ) {
+            scroller.setAttribute(
+                'tabindex',
+                '-1'
+            );
         }
 
-        if (scroller.style.outline !== 'none') {
-            scroller.style.outline = 'none';
-            changed = true;
+        if (
+            scroller.style.outline
+            !== 'none'
+        ) {
+            scroller.style.outline =
+                'none';
         }
 
-        if (scroller.style.scrollBehavior !== 'smooth') {
-            scroller.style.scrollBehavior = 'smooth';
-            changed = true;
+        if (
+            scroller.style.scrollBehavior
+            !== 'smooth'
+        ) {
+            scroller.style.scrollBehavior =
+                'smooth';
         }
-
-        log(
-            changed ? 'PREPARED scroller' : 'scroller already prepared',
-            'reason=', reason,
-            'before=', before,
-            'connected=', scroller.isConnected
-        );
 
         return scroller;
     }
 
-    /*
-     * 단순히 속성을 넣는 것에서 끝내지 않고
-     * 실제 focus 성공 여부까지 확인.
-     */
-    function focusScroller(reason = '') {
-        const scroller = prepareScroller(reason);
+    function focusScroller() {
+        const scroller =
+            prepareScroller();
 
         if (!scroller) {
-            log(
-                'FOCUS FAILED: no scroller',
-                'reason=', reason
-            );
-
             return false;
         }
 
-        const before = document.activeElement;
-
-        try {
-            scroller.focus({
-                preventScroll: true
-            });
-        } catch (error) {
-            log(
-                'focus() threw',
-                error
-            );
-
-            return false;
-        }
-
-        const success =
-            document.activeElement === scroller;
-
-        log(
-            success
-                ? 'FOCUS SUCCESS'
-                : 'FOCUS FAILED',
-            'reason=', reason,
-            'before=', describeElement(before),
-            'after=', describeElement(document.activeElement),
-            'scroller=', describeElement(scroller),
-            'connected=', scroller.isConnected
-        );
-
-        /*
-         * React 이벤트가 뒤에서 focus를 다시 뺏어가는지
-         * 한 프레임 뒤에도 확인.
-         */
-        requestAnimationFrame(() => {
-            log(
-                'FOCUS CHECK (next frame)',
-                'reason=', reason,
-                'active=', describeElement(document.activeElement),
-                'stillScroller=',
-                document.activeElement === scroller,
-                'scrollerConnected=',
-                scroller.isConnected
-            );
-        });
-
-        return success;
-    }
-
-    /*
-     * DOM 교체 타이밍을 잡기 위한 재검사.
-     *
-     * 이벤트 발생 직후부터 1.2초까지 확인한다.
-     */
-    function scheduleRepair(reason, shouldFocus = false) {
-        const sequence = ++repairSequence;
-
-        const delays = [
-            0,
-            30,
-            80,
-            150,
-            300,
-            600,
-            1200
-        ];
-
-        log(
-            'SCHEDULE',
-            '#' + sequence,
-            'reason=', reason,
-            'focus=', shouldFocus,
-            'active=', describeElement(document.activeElement)
-        );
-
-        for (const delay of delays) {
-            setTimeout(() => {
-                log(
-                    'RUN',
-                    '#' + sequence,
-                    `+${delay}ms`,
-                    'reason=', reason,
-                    'active=', describeElement(document.activeElement)
-                );
-
-                if (shouldFocus) {
-                    focusScroller(`${reason} +${delay}ms`);
-                } else {
-                    prepareScroller(`${reason} +${delay}ms`);
-                }
-            }, delay);
-        }
-    }
-
-    function isConversationArea(target) {
-        if (!(target instanceof Element)) {
-            return false;
-        }
-
-        const scroller = getCurrentScroller('isConversationArea');
-
-        if (scroller && scroller.contains(target)) {
-            return true;
-        }
-
-        /*
-         * scroller 교체 직후 contains()가 실패할 경우를 위해
-         * main 내부 일반 문서 클릭도 허용.
-         */
         if (
-            target.closest('main') &&
-            !isInputElement(target) &&
-            !isInteractiveElement(target)
+            document.activeElement
+            === scroller
         ) {
             return true;
         }
 
-        return false;
+        scroller.focus({
+            preventScroll: true
+        });
+
+        return (
+            document.activeElement
+            === scroller
+        );
+    }
+
+
+    // --------------------------------------------------
+    // Coalesced repair
+    // --------------------------------------------------
+
+    function cancelRepairTimers() {
+        for (const timer of repairTimers) {
+            clearTimeout(timer);
+        }
+
+        repairTimers = [];
+    }
+
+    function scheduleRepair(
+        focus = false
+    ) {
+        /*
+         * 여러 이벤트가 연속으로 발생해도
+         * 이전 repair chain을 취소하고
+         * 최신 요청 하나만 유지.
+         */
+        cancelRepairTimers();
+
+        const delays = [
+            0,
+            60,
+            180,
+            450,
+            900
+        ];
+
+        for (const delay of delays) {
+            const timer =
+                setTimeout(() => {
+
+                    /*
+                     * 이 순간 사용자가 입력 중이면
+                     * 아무것도 하지 않는다.
+                     */
+                    if (
+                        isInputElement(
+                            document.activeElement
+                        )
+                    ) {
+                        return;
+                    }
+
+                    if (focus) {
+                        focusScroller();
+                    } else {
+                        prepareScroller();
+                    }
+
+                }, delay);
+
+            repairTimers.push(timer);
+        }
     }
 
 
     // --------------------------------------------------
-    // Mouse / pointer events
+    // Mouse interaction
     // --------------------------------------------------
 
-    function logPointerEvent(event) {
-        log(
-            'EVENT',
-            event.type,
-            'target=', describeElement(event.target),
-            'active=', describeElement(document.activeElement),
-            'x=', event.clientX,
-            'y=', event.clientY
-        );
-    }
+    document.addEventListener(
+        'click',
+        event => {
 
-    document.addEventListener('pointerdown', event => {
-        logPointerEvent(event);
+            const target =
+                event.target;
 
-        scheduleRepair('pointerdown', false);
-
-    }, true);
-
-
-    document.addEventListener('mousedown', event => {
-        logPointerEvent(event);
-
-        scheduleRepair('mousedown', false);
-
-    }, true);
-
-
-    document.addEventListener('mouseup', event => {
-        logPointerEvent(event);
-
-        scheduleRepair('mouseup', false);
-
-    }, true);
-
-
-    document.addEventListener('click', event => {
-        logPointerEvent(event);
-
-        /*
-         * 모든 click은 scroller 재검사의 계기로 사용.
-         */
-        scheduleRepair('click', false);
-
-        const target = event.target;
-
-        if (!(target instanceof Element)) {
-            return;
-        }
-
-        if (isInputElement(target)) {
-            log('CLICK: input area → keep input focus');
-            return;
-        }
-
-        if (isInteractiveElement(target)) {
-            log(
-                'CLICK: interactive element',
-                describeElement(target),
-                '→ not focusing scroller immediately'
-            );
+            if (
+                !(target instanceof Element)
+            ) {
+                return;
+            }
 
             /*
-             * 사이드바에서 다른 채팅을 눌렀을 가능성이 높다.
-             * 새 대화 DOM이 생길 때까지 적극적으로 재검사.
+             * 입력창 클릭:
+             * 완전히 무시.
              */
-            scheduleRepair(
-                'interactive-click / possible navigation',
-                false
-            );
-
-            return;
-        }
-
-        if (isConversationArea(target)) {
-            log(
-                'CLICK: conversation area → FORCE FOCUS'
-            );
+            if (isInputElement(target)) {
+                return;
+            }
 
             /*
-             * 바로 한번.
+             * 버튼 / 링크 클릭.
+             *
+             * 다른 채팅으로 이동한 것일 수 있으므로
+             * 새 scroller가 생기는지만 재확인.
+             * 포커스는 뺏지 않는다.
              */
-            setTimeout(() => {
-                focusScroller('conversation click 0ms');
-            }, 0);
+            if (
+                isInteractiveElement(target)
+            ) {
+                scheduleRepair(false);
+                return;
+            }
+
+            const scroller =
+                getCurrentScroller();
 
             /*
-             * ChatGPT가 click 후 focus를 다시 가져가는 경우 보정.
+             * 대화 본문 클릭:
+             * 사용자가 문서를 읽으려는 상황으로 보고
+             * scroller에 포커스를 준다.
              */
-            setTimeout(() => {
-                focusScroller('conversation click 30ms');
-            }, 30);
+            if (
+                scroller &&
+                scroller.contains(target)
+            ) {
+                scheduleRepair(true);
+                return;
+            }
 
-            setTimeout(() => {
-                focusScroller('conversation click 100ms');
-            }, 100);
+            /*
+             * React 전환 직후에는 contains가
+             * 잠깐 실패할 수 있으므로 main 클릭도 허용.
+             */
+            if (
+                target.closest('main')
+            ) {
+                scheduleRepair(true);
+            }
 
-            setTimeout(() => {
-                focusScroller('conversation click 250ms');
-            }, 250);
-        }
-
-    }, true);
-
-
-    // --------------------------------------------------
-    // Focus events
-    // --------------------------------------------------
-
-    document.addEventListener('focusin', event => {
-
-        log(
-            'EVENT focusin',
-            'target=', describeElement(event.target),
-            'active=', describeElement(document.activeElement)
-        );
-
-        scheduleRepair('focusin', false);
-
-    }, true);
-
-
-    document.addEventListener('focusout', event => {
-
-        log(
-            'EVENT focusout',
-            'target=', describeElement(event.target),
-            'relatedTarget=',
-            describeElement(event.relatedTarget),
-            'active=', describeElement(document.activeElement)
-        );
-
-        scheduleRepair('focusout', false);
-
-        /*
-         * 특히 입력창에서 빠져나온 경우는
-         * 새 포커스 위치가 결정된 뒤 다시 검사.
-         */
-        if (isInputElement(event.target)) {
-
-            setTimeout(() => {
-
-                const active =
-                    document.activeElement;
-
-                log(
-                    'INPUT FOCUSOUT CHECK',
-                    'active=', describeElement(active)
-                );
-
-                /*
-                 * 다른 input/button으로 간 게 아니라면
-                 * scroller로 포커스를 이동.
-                 */
-                if (
-                    !isInputElement(active) &&
-                    !isInteractiveElement(active)
-                ) {
-                    focusScroller(
-                        'input focusout'
-                    );
-                }
-
-            }, 0);
-        }
-
-    }, true);
+        },
+        true
+    );
 
 
     // --------------------------------------------------
     // Keyboard
     // --------------------------------------------------
 
-    window.addEventListener('keydown', event => {
+    window.addEventListener(
+        'keydown',
+        event => {
 
-        const keys = [
-            'ArrowUp',
-            'ArrowDown',
-            'PageUp',
-            'PageDown',
-            'Home',
-            'End',
-            ' '
-        ];
+            /*
+             * 스크롤 키가 아니면
+             * 즉시 종료.
+             *
+             * 일반 문자 입력에는 아무 작업도 하지 않는다.
+             */
+            if (
+                !SCROLL_KEYS.has(event.key)
+            ) {
+                return;
+            }
 
-        if (!keys.includes(event.key)) {
-            return;
-        }
+            /*
+             * 입력창이면 스크롤 키조차 건드리지 않는다.
+             *
+             * ↑↓로 프롬프트 편집하거나
+             * Home/End 사용하는 것도 그대로 유지.
+             */
+            if (
+                isInputElement(
+                    document.activeElement
+                )
+            ) {
+                return;
+            }
 
-        log(
-            'EVENT keydown',
-            'key=', JSON.stringify(event.key),
-            'active=', describeElement(document.activeElement)
-        );
+            /*
+             * 실제 스크롤 키를 누른 순간만
+             * scroller focus를 보장.
+             */
+            focusScroller();
 
-        const active =
-            document.activeElement;
+            /*
+             * preventDefault() 없음.
+             *
+             * 이후 브라우저의 native keyboard scroll이
+             * 자연스럽게 실행된다.
+             */
 
-        if (
-            active &&
-            isInputElement(active)
-        ) {
-            log(
-                'KEYDOWN ignored: input has focus'
-            );
-
-            return;
-        }
-
-        /*
-         * 실제 키 스크롤 직전에 무조건 현재 scroller를
-         * 다시 찾고 focus.
-         */
-        const success =
-            focusScroller(
-                `keydown ${event.key}`
-            );
-
-        log(
-            'KEYDOWN focus result=',
-            success
-        );
-
-        /*
-         * preventDefault 하지 않음.
-         *
-         * focus가 성공했다면 browser native scroll이
-         * 그대로 처리한다.
-         */
-
-    }, true);
+        },
+        true
+    );
 
 
     // --------------------------------------------------
-    // SPA route detection
+    // SPA navigation
     // --------------------------------------------------
 
-    function routeChanged(reason) {
-
-        log(
-            'ROUTE CHANGE',
-            reason,
-            'url=', location.href
-        );
-
-        scheduleRepair(
-            'route-change: ' + reason,
-            false
-        );
+    function handleRouteChange() {
+        scheduleRepair(false);
     }
 
     const originalPushState =
         history.pushState;
 
-    history.pushState = function (...args) {
+    history.pushState =
+        function (...args) {
 
-        const result =
-            originalPushState.apply(
-                this,
-                args
-            );
+            const result =
+                originalPushState.apply(
+                    this,
+                    args
+                );
 
-        routeChanged('pushState');
+            handleRouteChange();
 
-        return result;
-    };
+            return result;
+        };
 
 
     const originalReplaceState =
         history.replaceState;
 
-    history.replaceState = function (...args) {
+    history.replaceState =
+        function (...args) {
 
-        const result =
-            originalReplaceState.apply(
-                this,
-                args
-            );
+            const result =
+                originalReplaceState.apply(
+                    this,
+                    args
+                );
 
-        routeChanged('replaceState');
+            handleRouteChange();
 
-        return result;
-    };
+            return result;
+        };
 
 
     window.addEventListener(
         'popstate',
-        () => routeChanged('popstate')
+        handleRouteChange
     );
 
 
     /*
-     * Next/React router가 history hook을 우회하는 경우까지
-     * 확인하기 위한 아주 가벼운 fallback.
+     * Router가 history hook을 우회하는 상황에 대한
+     * 아주 저렴한 fallback.
+     *
+     * DOM 검사는 안 하고 URL 문자열만 비교한다.
      */
     setInterval(() => {
 
-        if (location.href === lastHref) {
+        if (
+            location.href === lastHref
+        ) {
             return;
         }
-
-        const oldHref = lastHref;
 
         lastHref = location.href;
 
-        log(
-            'URL POLL CHANGE',
-            'from=', oldHref,
-            'to=', lastHref
-        );
+        handleRouteChange();
 
-        routeChanged('URL poll');
-
-    }, 250);
+    }, 750);
 
 
     // --------------------------------------------------
-    // Initial boot
+    // Initial setup
     // --------------------------------------------------
 
     function boot() {
-
         if (!document.body) {
-
             requestAnimationFrame(boot);
-
             return;
         }
 
-        log(
-            'BOOT',
-            'url=', location.href
-        );
-
-        scheduleRepair(
-            'initial boot',
-            false
-        );
+        scheduleRepair(false);
     }
 
     boot();
